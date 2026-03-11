@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>معهد علوم المستقبل - سرعة فائقة</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1e3a8a; --accent: #3b82f6; --bg: #f8fafc; }
+        body { font-family: 'Tajawal', sans-serif; background: var(--bg); padding: 20px; direction: rtl; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #e2e8f0; border-radius: 8px; outline: none; }
+        .btn-save { background: var(--primary); color: white; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+        .status-badge { padding: 5px 12px; border-radius: 50px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+        .status-pending { background: #fffbeb; color: #b45309; }
+        .status-resolved { background: #ecfdf5; color: #047857; }
+        /* مؤشر صغير للمزامنة */
+        #sync-indicator { display: none; position: fixed; bottom: 20px; left: 20px; background: #1e293b; color: white; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+<div id="sync-indicator">جاري الحفظ في السحابة... ☁️</div>
+
+<div class="container">
+    <header style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: var(--primary); margin:0;">معهد علوم المستقبل العالي للتدريب</h1>
+        <small>نظام المزامنة الفوري الذكي</small>
+    </header>
+
+    <div class="grid">
+        <div class="card">
+            <h2>إدارة الطلب</h2>
+            <form id="mainForm">
+                <input type="text" id="name" placeholder="اسم المتدرب" required>
+                <select id="type">
+                    <option value="تسجيل دورة">تسجيل دورة</option>
+                    <option value="تأجيل">تأجيل</option>
+                    <option value="شهادة">شهادة</option>
+                </select>
+                <select id="status">
+                    <option value="قيد الانتظار">قيد الانتظار</option>
+                    <option value="تم الحل">تم الحل</option>
+                </select>
+                <textarea id="subject" rows="3" placeholder="الملاحظات" required></textarea>
+                <button type="submit" class="btn-save" id="submitBtn">حفظ فوري</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>المتدرب</th>
+                        <th>الموضوع</th>
+                        <th>الحالة</th>
+                        <th>إجراء</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7PRpy0MwU1xb-B84XrpbLg1TyycFPd9L_-ZGDNdjN33s8891sHiVaQ8sl4StSW6Npgg/exec";
+    let localData = []; // تخزين البيانات محلياً للسرعة
+    let currentId = null;
+
+    async function loadData() {
+        try {
+            const response = await fetch(SCRIPT_URL);
+            localData = await response.json();
+            renderTable();
+        } catch (e) { console.error("Error loading"); }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('dataTable');
+        tbody.innerHTML = '';
+        [...localData].reverse().forEach(row => {
+            const isResolved = row[3] === 'تم الحل';
+            tbody.innerHTML += `
+                <tr id="row-${row[0]}">
+                    <td><b>${row[1]}</b><br><small>${row[2]}</small></td>
+                    <td>${row[4]}</td>
+                    <td><span class="status-badge ${isResolved?'status-resolved':'status-pending'}" 
+                        onclick="fastToggle('${row[0]}')">${row[3]}</span></td>
+                    <td><button onclick="editLocal('${row[0]}')" style="color:blue; background:none; border:none; cursor:pointer;">تعديل</button></td>
+                </tr>`;
+        });
+    }
+
+    // المزامنة في الخلفية دون تعطيل المستخدم
+    async function sync(payload) {
+        document.getElementById('sync-indicator').style.display = 'block';
+        await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+        document.getElementById('sync-indicator').style.display = 'none';
+    }
+
+    document.getElementById('mainForm').onsubmit = function(e) {
+        e.preventDefault();
+        const payload = {
+            id: currentId || Date.now().toString(),
+            name: document.getElementById('name').value,
+            type: document.getElementById('type').value,
+            status: document.getElementById('status').value,
+            subject: document.getElementById('subject').value
+        };
+
+        // تحديث الواجهة فوراً (Optimistic Update)
+        if (currentId) {
+            localData = localData.map(r => r[0].toString() === currentId.toString() ? [payload.id, payload.name, payload.type, payload.status, payload.subject] : r);
+        } else {
+            localData.push([payload.id, payload.name, payload.type, payload.status, payload.subject]);
+        }
+        
+        renderTable();
+        sync(payload); // المزامنة في الخلفية
+        this.reset();
+        currentId = null;
+    };
+
+    function fastToggle(id) {
+        localData = localData.map(r => {
+            if (r[0].toString() === id.toString()) {
+                const newStatus = r[3] === "تم الحل" ? "قيد الانتظار" : "تم الحل";
+                const updatedRow = [r[0], r[1], r[2], newStatus, r[4]];
+                sync({id: r[0], name: r[1], type: r[2], status: newStatus, subject: r[4]});
+                return updatedRow;
+            }
+            return r;
+        });
+        renderTable();
+    }
+
+    function editLocal(id) {
+        const r = localData.find(row => row[0].toString() === id.toString());
+        if(r) {
+            currentId = r[0];
+            document.getElementById('name').value = r[1];
+            document.getElementById('type').value = r[2];
+            document.getElementById('status').value = r[3];
+            document.getElementById('subject').value = r[4];
+            window.scrollTo(0,0);
+        }
+    }
+
+    window.onload = loadData;
+</script>
+</body>
+</html>
