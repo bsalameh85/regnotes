@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -13,11 +14,10 @@
         input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #e2e8f0; border-radius: 8px; outline: none; }
         .btn-save { background: var(--primary); color: white; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+        th, td { padding: 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-size: 0.9rem; }
         .status-badge { padding: 5px 12px; border-radius: 50px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
         .status-pending { background: #fffbeb; color: #b45309; }
         .status-resolved { background: #ecfdf5; color: #047857; }
-        /* مؤشر صغير للمزامنة */
         #sync-indicator { display: none; position: fixed; bottom: 20px; left: 20px; background: #1e293b; color: white; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; }
     </style>
 </head>
@@ -40,6 +40,7 @@
                     <option value="تسجيل دورة">تسجيل دورة</option>
                     <option value="تأجيل">تأجيل</option>
                     <option value="شهادة">شهادة</option>
+                    <option value="التحقق المالي">التحقق المالي</option>
                 </select>
                 <select id="status">
                     <option value="قيد الانتظار">قيد الانتظار</option>
@@ -56,6 +57,7 @@
                     <tr>
                         <th>المتدرب</th>
                         <th>الموضوع</th>
+                        <th>التاريخ</th>
                         <th>الحالة</th>
                         <th>إجراء</th>
                     </tr>
@@ -67,8 +69,8 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7PRpy0MwU1xb-B84XrpbLg1TyycFPd9L_-ZGDNdjN33s8891sHiVaQ8sl4StSW6Npgg/exec";
-    let localData = []; // تخزين البيانات محلياً للسرعة
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyhDy-4OLbwRWPBR7LpwoGZ8ThnDYdYjWNNFD6jomqQ8K2HDIfcruTe-oZ1I2_-i-aT/exec";
+    let localData = []; 
     let currentId = null;
 
     async function loadData() {
@@ -82,12 +84,26 @@
     function renderTable() {
         const tbody = document.getElementById('dataTable');
         tbody.innerHTML = '';
-        [...localData].reverse().forEach(row => {
+
+        // ترتيب البيانات: قيد الانتظار في الأعلى، تم الحل في الأسفل
+        const sortedData = [...localData].sort((a, b) => {
+            const statusA = a[3]; // عمود الحالة
+            const statusB = b[3];
+            if (statusA === "تم الحل" && statusB !== "تم الحل") return 1;
+            if (statusA !== "تم الحل" && statusB === "تم الحل") return -1;
+            return 0;
+        });
+
+        sortedData.forEach(row => {
+            // row[5] هو عمود التاريخ (إذا كان موجوداً)
+            const dateDisplay = row[5] ? row[5] : '---';
             const isResolved = row[3] === 'تم الحل';
+            
             tbody.innerHTML += `
                 <tr id="row-${row[0]}">
                     <td><b>${row[1]}</b><br><small>${row[2]}</small></td>
                     <td>${row[4]}</td>
+                    <td>${dateDisplay}</td>
                     <td><span class="status-badge ${isResolved?'status-resolved':'status-pending'}" 
                         onclick="fastToggle('${row[0]}')">${row[3]}</span></td>
                     <td><button onclick="editLocal('${row[0]}')" style="color:blue; background:none; border:none; cursor:pointer;">تعديل</button></td>
@@ -95,7 +111,6 @@
         });
     }
 
-    // المزامنة في الخلفية دون تعطيل المستخدم
     async function sync(payload) {
         document.getElementById('sync-indicator').style.display = 'block';
         await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
@@ -104,23 +119,34 @@
 
     document.getElementById('mainForm').onsubmit = function(e) {
         e.preventDefault();
+        
+        let recordDate;
+        // إذا كنا في وضع التعديل، نحتفظ بالتاريخ القديم، وإلا نضع تاريخ اليوم
+        if (currentId) {
+            const existingRow = localData.find(r => r[0].toString() === currentId.toString());
+            recordDate = existingRow && existingRow[5] ? existingRow[5] : new Date().toLocaleDateString('ar-SA');
+        } else {
+            recordDate = new Date().toLocaleDateString('ar-SA');
+        }
+
         const payload = {
             id: currentId || Date.now().toString(),
             name: document.getElementById('name').value,
             type: document.getElementById('type').value,
             status: document.getElementById('status').value,
-            subject: document.getElementById('subject').value
+            subject: document.getElementById('subject').value,
+            date: recordDate
         };
 
-        // تحديث الواجهة فوراً (Optimistic Update)
+        // تحديث الواجهة فوراً
         if (currentId) {
-            localData = localData.map(r => r[0].toString() === currentId.toString() ? [payload.id, payload.name, payload.type, payload.status, payload.subject] : r);
+            localData = localData.map(r => r[0].toString() === currentId.toString() ? [payload.id, payload.name, payload.type, payload.status, payload.subject, payload.date] : r);
         } else {
-            localData.push([payload.id, payload.name, payload.type, payload.status, payload.subject]);
+            localData.push([payload.id, payload.name, payload.type, payload.status, payload.subject, payload.date]);
         }
         
         renderTable();
-        sync(payload); // المزامنة في الخلفية
+        sync(payload);
         this.reset();
         currentId = null;
     };
@@ -129,8 +155,9 @@
         localData = localData.map(r => {
             if (r[0].toString() === id.toString()) {
                 const newStatus = r[3] === "تم الحل" ? "قيد الانتظار" : "تم الحل";
-                const updatedRow = [r[0], r[1], r[2], newStatus, r[4]];
-                sync({id: r[0], name: r[1], type: r[2], status: newStatus, subject: r[4]});
+                // نمرر التاريخ القديم (r[5]) حتى لا يتغير عند تغيير الحالة فقط
+                const updatedRow = [r[0], r[1], r[2], newStatus, r[4], r[5]];
+                sync({id: r[0], name: r[1], type: r[2], status: newStatus, subject: r[4], date: r[5]});
                 return updatedRow;
             }
             return r;
