@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -34,6 +33,9 @@
         #sync-indicator { display: none; position: fixed; bottom: 20px; left: 20px; background: #1e293b; color: white; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         
         .empty-msg { text-align: center; color: #94a3b8; padding: 40px; font-size: 1.1rem; }
+        
+        /* تنسيق لتبويبات البحث */
+        .search-tabs-info { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; display: none; }
     </style>
 </head>
 <body>
@@ -43,7 +45,7 @@
 <div class="container">
     <header style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: var(--primary); margin:0;">معهد علوم المستقبل العالي للتدريب</h1>
-        <small>نظام بحث وإدارة الطلبات</small>
+        <small>نظام بحث شامل وإدارة الطلبات</small>
     </header>
 
     <div class="grid">
@@ -72,10 +74,13 @@
                     <button class="tab-btn" id="btn-resolved" onclick="switchTab('resolved')">الطلبات التي تم حلها</button>
                 </div>
                 <div class="tabs-right">
-                    <!-- صندوق البحث الجديد -->
-                    <input type="text" id="searchInput" class="search-box" placeholder="🔍 بحث عن متدرب أو موضوع..." onkeyup="renderTable()">
+                    <!-- صندوق البحث -->
+                    <input type="text" id="searchInput" class="search-box" placeholder="🔍 بحث شامل (الكل)..." onkeyup="renderTable()">
                 </div>
             </div>
+            
+            <!-- رسالة توضيحية تظهر عند البحث -->
+            <div id="searchInfo" class="search-tabs-info">نتائج البحث تشمل: الطلبات الحالية والأرشيف</div>
 
             <table>
                 <thead>
@@ -110,6 +115,8 @@
 
     function switchTab(tabName) {
         activeTab = tabName;
+        // مسح البحث عند تغيير التبويب لرؤية المحتوى بوضوح
+        document.getElementById('searchInput').value = "";
         document.getElementById('btn-pending').classList.toggle('active', tabName === 'pending');
         document.getElementById('btn-resolved').classList.toggle('active', tabName === 'resolved');
         renderTable();
@@ -118,37 +125,42 @@
     function renderTable() {
         const tbody = document.getElementById('dataTable');
         const emptyMsg = document.getElementById('emptyMsg');
-        const searchTerm = document.getElementById('searchInput').value.toLowerCase(); // الحصول على كلمة البحث
+        const searchInfo = document.getElementById('searchInfo');
+        const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase(); 
         
         tbody.innerHTML = '';
 
-        // 1. تصفية البيانات حسب التبويب وحسب البحث
+        // منطق الفلترة الجديد
         let filteredData = localData.filter(row => {
             const isResolved = row[3] === 'تم الحل';
             
-            // شرط التبويب
-            const matchesTab = (activeTab === 'pending' && !isResolved) || (activeTab === 'resolved' && isResolved);
-            if (!matchesTab) return false;
-
-            // شرط البحث (الاسم أو الموضوع أو النوع)
-            // row[1]: الاسم, row[4]: الموضوع, row[2]: النوع
+            // 1. التحقق من البحث أولاً
             const name = row[1] ? row[1].toString().toLowerCase() : '';
             const subject = row[4] ? row[4].toString().toLowerCase() : '';
             const type = row[2] ? row[2].toString().toLowerCase() : '';
-
             const matchesSearch = name.includes(searchTerm) || subject.includes(searchTerm) || type.includes(searchTerm);
-            
-            return matchesSearch;
+
+            // 2. إذا كان المستخدم يبحث (يوجد نص في صندوق البحث)
+            if (searchTerm !== "") {
+                searchInfo.style.display = 'block'; // إظهار رسالة "نتائج شاملة"
+                // أظهر النتيجة إذا تطابق البحث، بغض النظر عن التبويب الحالي
+                return matchesSearch; 
+            } else {
+                searchInfo.style.display = 'none'; // إخفاء الرسالة
+                // 3. إذا لم يكن يبحث، طبق فلتر التبويب العادي
+                const matchesTab = (activeTab === 'pending' && !isResolved) || (activeTab === 'resolved' && isResolved);
+                return matchesTab;
+            }
         });
 
-        // 2. ترتيب الأحدث أولاً
+        // ترتيب الأحدث أولاً
         const sortedData = [...filteredData].sort((a, b) => Number(b[0]) - Number(a[0]));
 
-        // 3. عرض رسالة إذا فارغ
+        // معالجة حالة "لا توجد بيانات"
         if (sortedData.length === 0) {
             emptyMsg.style.display = 'block';
             if (searchTerm !== "") {
-                emptyMsg.textContent = '⚠️ لا توجد نتائج مطابقة للبحث';
+                emptyMsg.textContent = '⚠️ لا توجد نتائج مطابقة للبحث في كلا القسمين';
             } else {
                 if (activeTab === 'pending') emptyMsg.textContent = '🎉 لا توجد طلبات قيد الانتظار حالياً';
                 else emptyMsg.textContent = 'لا توجد طلبات تم حلها';
@@ -157,7 +169,7 @@
             emptyMsg.style.display = 'none';
         }
 
-        // 4. بناء الجدول
+        // بناء الجدول
         sortedData.forEach(row => {
             const dateDisplay = row[5] ? row[5] : '---';
             const isResolved = row[3] === 'تم الحل';
@@ -214,6 +226,8 @@
         }
         
         cancelEditMode();
+        // مسح البحث بعد الحفظ لرؤية الطلب الجديد
+        document.getElementById('searchInput').value = "";
         renderTable(); 
         sync(payload);
     };
@@ -228,6 +242,7 @@
             }
             return r;
         });
+        // عند تغيير الحالة، إذا كنا في وضع البحث، يبقى البحث، وإلا يحدث الجدول
         renderTable();
     }
 
